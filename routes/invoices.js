@@ -47,7 +47,6 @@ router.get("/:id", async function(req, res, next) {
     );
 
     invoice.company = companyResult.rows[0];
-
     delete invoice.comp_code;
 
     return res.json({
@@ -83,19 +82,38 @@ router.post("/", async function(req, res, next) {
 // PUT /invoices/:id
 router.put("/:id", async function(req, res, next) {
   try {
-    const { amt } = req.body;
+    const { amt, paid } = req.body;
+
+    const currentResult = await db.query(
+      `SELECT id, comp_code, amt, paid, add_date, paid_date
+       FROM invoices
+       WHERE id = $1`,
+      [req.params.id]
+    );
+
+    if (currentResult.rows.length === 0) {
+      throw new ExpressError("Invoice not found", 404);
+    }
+
+    const currentInvoice = currentResult.rows[0];
+
+    let paidDate = currentInvoice.paid_date;
+
+    if (paid === true && currentInvoice.paid === false) {
+      paidDate = new Date();
+    } else if (paid === false && currentInvoice.paid === true) {
+      paidDate = null;
+    }
 
     const result = await db.query(
       `UPDATE invoices
-       SET amt = $1
-       WHERE id = $2
+       SET amt = $1,
+           paid = $2,
+           paid_date = $3
+       WHERE id = $4
        RETURNING id, comp_code, amt, paid, add_date, paid_date`,
-      [amt, req.params.id]
+      [amt, paid, paidDate, req.params.id]
     );
-
-    if (result.rows.length === 0) {
-      throw new ExpressError("Invoice not found", 404);
-    }
 
     return res.json({
       invoice: result.rows[0]
@@ -127,5 +145,6 @@ router.delete("/:id", async function(req, res, next) {
     return next(err);
   }
 });
+
 
 module.exports = router;
